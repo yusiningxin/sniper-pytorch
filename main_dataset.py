@@ -7,7 +7,7 @@ from configs.faster.default_configs import config, update_config, update_config_
 from iterators.PytorchIterator import PytorchIterator
 from data_utils.load_data import load_proposal_roidb, merge_roidb, filter_roidb
 from bbox.bbox_regression import add_bbox_regression_targets
-#from iterators.PytorchIterator import PytorchIterator
+from iterators.PytorchIterator import PytorchIterator
 import torch
 import argparse
 
