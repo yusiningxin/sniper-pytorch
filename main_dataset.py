@@ -1,10 +1,14 @@
+#from lib.iterators.PytorchIterator import PytorchIterator
 import init
 import os
 import sys
-sys.path.insert(0, 'lib')
+#sys.path.insert(0, 'lib')
 from configs.faster.default_configs import config, update_config, update_config_from_list
+from iterators.PytorchIterator import PytorchIterator
 from data_utils.load_data import load_proposal_roidb, merge_roidb, filter_roidb
 from bbox.bbox_regression import add_bbox_regression_targets
+#from iterators.PytorchIterator import PytorchIterator
+import torch
 import argparse
 
 
@@ -45,3 +49,17 @@ if __name__ == '__main__':
     roidb = merge_roidb(roidbs)
     roidb = filter_roidb(roidb, config)
     bbox_means, bbox_stds = add_bbox_regression_targets(roidb, config)
+    print('Creating Iterator with {} Images'.format(len(roidb)))
+
+    pytorch_dataset = PytorchIterator(roidb=roidb, config=config, batch_size=batch_size, nGPUs=nGPUs,threads=config.TRAIN.NUM_THREAD, pad_rois_to=400)
+    train_loader = torch.utils.data.DataLoader(dataset=pytorch_dataset, batch_size=batch_size, shuffle=False,num_workers=0)
+    for i, (data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes) in enumerate(train_loader):
+        print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
+        assert 1==2
+
+    # Creating the Logger
+    # logger, output_path = create_logger(config.output_path, args.cfg, config.dataset.image_set)
+
+
+
+
