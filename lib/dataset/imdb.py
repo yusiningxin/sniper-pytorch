@@ -124,6 +124,7 @@ class IMDB(object):
         :return: roidb: [image_index]['boxes', 'gt_classes', 'gt_overlaps', 'flipped']
         """
         box_list, mapping_list = self.load_rpn_data(proposal_path)
+
         return self.create_roidb_from_box_list(box_list, mapping_list, gt_roidb)
 
     def rpn_roidb(self, gt_roidb, append_gt=False, cfg = '', proposal_path='proposals'):
@@ -137,6 +138,7 @@ class IMDB(object):
         if append_gt:
             print 'appending ground truth annotations'
             rpn_roidb = self.load_rpn_roidb(gt_roidb,proposal_path)
+            rpn_roidb = rpn_roidb[:10]
             roidb = IMDB.merge_roidbs(gt_roidb, rpn_roidb)
         else:
             roidb = self.load_rpn_roidb(gt_roidb)

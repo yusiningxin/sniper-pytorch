@@ -1,4 +1,3 @@
-#from lib.iterators.PytorchIterator import PytorchIterator
 import init
 import os
 import sys
@@ -8,6 +7,8 @@ from iterators.PytorchIterator import PytorchIterator
 from data_utils.load_data import load_proposal_roidb, merge_roidb, filter_roidb
 from bbox.bbox_regression import add_bbox_regression_targets
 from iterators.PytorchIterator import PytorchIterator
+from models.faster_rcnn import FasterRCNN
+from train_utils.train_one_batch import train_one_batch
 import torch
 import argparse
 
@@ -53,9 +54,14 @@ if __name__ == '__main__':
 
     pytorch_dataset = PytorchIterator(roidb=roidb, config=config, batch_size=batch_size, nGPUs=nGPUs,threads=config.TRAIN.NUM_THREAD, pad_rois_to=400)
     train_loader = torch.utils.data.DataLoader(dataset=pytorch_dataset, batch_size=batch_size, shuffle=False,num_workers=0)
-    for i, (data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes) in enumerate(train_loader):
-        print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
-        assert 1==2
+
+    train_model = FasterRCNN(config,is_train=True)
+    train_model = train_model.cuda()
+    for epoch in range(config.TRAIN.begin_epoch,config.TRAIN.end_epoch):
+        for i, (data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes) in enumerate(train_loader):
+            print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
+            train_one_batch(train_model,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
+            assert 1==2
 
     # Creating the Logger
     # logger, output_path = create_logger(config.output_path, args.cfg, config.dataset.image_set)

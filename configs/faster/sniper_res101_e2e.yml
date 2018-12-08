@@ -6,7 +6,7 @@
 ---
 output_path: "./output/sniper_res101_bn"
 symbol: resnet_mx_101_e2e
-gpus: '0,1,2,3,4,5,6,7'
+gpus: '7'
 CLASS_AGNOSTIC: true
 default:
   kvstore: device
@@ -40,9 +40,9 @@ dataset:
   NUM_CLASSES: 81
   dataset: coco
   dataset_path: "./data/coco"
-  image_set: train2017+val2017
+  image_set: train2014+val2014
   root_path: "./data"
-  test_image_set: test2017
+  test_image_set: test-dev2017
   proposal: rpn
 TRAIN:
   ## CHIP GENERATION PARAMS
@@ -56,7 +56,7 @@ TRAIN:
   # Multi-processing params
   # These parameters are used for parallel chip generation, NMS, etc.
   # Please consider adjusting them for your system
-  NUM_PROCESS: 64
+  NUM_PROCESS: 32
   NUM_THREAD: 8
 
   # Whether to train with segmentation mask
@@ -89,7 +89,7 @@ TRAIN:
   end_epoch: 7
 
   # whether flip image
-  FLIP: true
+  FLIP: false
   # whether shuffle image
   SHUFFLE: true
   # whether use OHEM
