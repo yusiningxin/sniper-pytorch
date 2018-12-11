@@ -83,14 +83,13 @@ class PytorchIterator(data.Dataset):
         #cur_to = min(cur_to,len(self.inds)) # just for test
 
         roidb = [self.roidb[self.inds[i]] for i in range(cur_from, cur_to)]
-
         cropids = [self.roidb[self.inds[i]]['chip_order'][self.crop_idx[self.inds[i]] % len(self.roidb[self.inds[i]]['chip_order'])] for i in range(cur_from, cur_to)]
-
         n_batch = len(roidb)
 
         ims = []
         for i in range(n_batch):
             ims.append([roidb[i]['image'], roidb[i]['crops'][cropids[i]], roidb[i]['flipped']])
+
         #print("begin im_work")
         processed_list = self.thread_pool.map_async(self.im_worker.worker, ims)
 
@@ -179,10 +178,10 @@ class PytorchIterator(data.Dataset):
         self.label_batch = [labels, bbox_targets, bbox_weights] if self.cfg.TRAIN.ONLY_PROPOSAL else \
             [labels, bbox_targets, bbox_weights, gt_boxes]
 
-
         if self.cfg.TRAIN.WITH_MASK:
             self.label_batch.append(np.array(encoded_masks))
         #self.visualize(im_tensor, gt_boxes)
+
         # return mx.io.DataBatch(data=self.data, label=self.label, pad=self.getpad(), index=self.getindex(),
         #                        provide_data=self.provide_data, provide_label=self.provide_label)
 
@@ -205,9 +204,8 @@ class PytorchIterator(data.Dataset):
             cs = chips[i]
             chip_count += len(cs)
             r['crops'] = cs
+
         all_props_in_chips = []
-
-
         for i in range(self.cfg.TRAIN.CHIPS_DB_PARTS):
             all_props_in_chips += self.pool.map(self.chip_worker.box_assigner,
                                                 self.roidb[i * n_per_part:min((i + 1) * n_per_part, len(self.roidb))])

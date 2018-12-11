@@ -95,7 +95,7 @@ TRAIN:
   # whether use OHEM
   ENABLE_OHEM: true
   # Number of images per GPU
-  BATCH_IMAGES: 16
+  BATCH_IMAGES: 8
   # e2e changes behavior of anchor loader and metric
   END2END: true
   # R-CNN

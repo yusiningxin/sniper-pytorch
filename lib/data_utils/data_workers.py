@@ -125,6 +125,7 @@ class anchor_worker(object):
         all_anchors = base_anchors.reshape((1, self.num_anchors, 4)) + \
                       shifts.reshape((1, self.K, 4)).transpose((1, 0, 2))
         self.all_anchors = all_anchors.reshape((self.K * self.num_anchors, 4))
+
         self.batch_size = cfg.TRAIN.RPN_BATCH_SIZE
         self.pos_thresh = cfg.TRAIN.RPN_POSITIVE_OVERLAP
         self.neg_thresh = cfg.TRAIN.RPN_NEGATIVE_OVERLAP

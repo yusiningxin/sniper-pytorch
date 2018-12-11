@@ -1,6 +1,9 @@
+
 import init
 import os
 import sys
+import matplotlib
+matplotlib.use('Agg')
 #sys.path.insert(0, 'lib')
 from configs.faster.default_configs import config, update_config, update_config_from_list
 from iterators.PytorchIterator import PytorchIterator
@@ -10,6 +13,7 @@ from iterators.PytorchIterator import PytorchIterator
 from models.faster_rcnn import FasterRCNN
 from train_utils.train_one_batch import train_one_batch
 import torch
+os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
 import argparse
 
 
@@ -56,12 +60,19 @@ if __name__ == '__main__':
     train_loader = torch.utils.data.DataLoader(dataset=pytorch_dataset, batch_size=batch_size, shuffle=False,num_workers=0)
 
     train_model = FasterRCNN(config,is_train=True)
-    train_model = train_model.cuda()
+
+    # model_dict = train_model.state_dict()
+    # print(model_dict.keys())
+    # assert 3==4
+    train_model = torch.nn.DataParallel(train_model).cuda()
+
+    optimizer = torch.optim.SGD(train_model.parameters(), 0.01, momentum=0.9, weight_decay=0.0001)
+    #train_model = train_model.cuda()
     for epoch in range(config.TRAIN.begin_epoch,config.TRAIN.end_epoch):
         for i, (data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes) in enumerate(train_loader):
             print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
-            train_one_batch(train_model,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
-            assert 1==2
+            train_one_batch(train_model,optimizer,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
+            #assert 1==2
 
     # Creating the Logger
     # logger, output_path = create_logger(config.output_path, args.cfg, config.dataset.image_set)
