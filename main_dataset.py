@@ -2,6 +2,9 @@
 import init
 import os
 import sys
+import torch
+os.environ["CUDA_VISIBLE_DEVICES"] = '4,5,6,7'
+#os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import matplotlib
 matplotlib.use('Agg')
 #sys.path.insert(0, 'lib')
@@ -12,9 +15,29 @@ from bbox.bbox_regression import add_bbox_regression_targets
 from iterators.PytorchIterator import PytorchIterator
 from models.faster_rcnn import FasterRCNN
 from train_utils.train_one_batch import train_one_batch
-import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = '0,1'
 import argparse
+import logging
+import logging.config
+
+class AverageMeter(object):
+    """Computes and stores the average and current value"""
+    def __init__(self):
+        self.reset()
+
+    def reset(self):
+        self.val = 0
+        self.avg = 0
+        self.sum = 0
+        self.count = 0
+
+    def update(self, val, n=1):
+        self.val = val
+        self.sum += val * n
+        self.count += n
+        self.avg = 0 if (self.count < 1e-5) else (self.sum / self.count)
+
+
+
 
 
 def parser():
@@ -30,6 +53,9 @@ def parser():
                             default=None, nargs=argparse.REMAINDER)
     return arg_parser.parse_args()
 
+def save_checkpoint(state, filename):
+    torch.save(state, filename)
+
 if __name__ == '__main__':
     args = parser()
     update_config(args.cfg)
@@ -41,6 +67,7 @@ if __name__ == '__main__':
 
     if not os.path.isdir(config.output_path):
         os.mkdir(config.output_path)
+
 
     # Create roidb
     image_sets = [iset for iset in config.dataset.image_set.split('+')]
@@ -56,26 +83,39 @@ if __name__ == '__main__':
     bbox_means, bbox_stds = add_bbox_regression_targets(roidb, config)
     print('Creating Iterator with {} Images'.format(len(roidb)))
 
+    # Creating the Logger
+
+
     pytorch_dataset = PytorchIterator(roidb=roidb, config=config, batch_size=batch_size, nGPUs=nGPUs,threads=config.TRAIN.NUM_THREAD, pad_rois_to=400)
     train_loader = torch.utils.data.DataLoader(dataset=pytorch_dataset, batch_size=batch_size, shuffle=False,num_workers=0)
 
     train_model = FasterRCNN(config,is_train=True)
 
-    # model_dict = train_model.state_dict()
-    # print(model_dict.keys())
-    # assert 3==4
-    train_model = torch.nn.DataParallel(train_model).cuda()
+
+    train_model = torch.nn.DataParallel(train_model).cuda().train()
 
     optimizer = torch.optim.SGD(train_model.parameters(), 0.01, momentum=0.9, weight_decay=0.0001)
     #train_model = train_model.cuda()
+    meter_names = ['batch_time',  'loss','rpn_cls_loss','rpn_box_loss','rcnn_cls_loss','rcnn_box_loss','acc','pos_recall','neg_recall','neg_num','pos_num','rpn_acc','rpn_pos_recall','rpn_neg_recall','rpn_neg_num','rpn_pos_num']
+    meters = {name: AverageMeter() for name in meter_names}
     for epoch in range(config.TRAIN.begin_epoch,config.TRAIN.end_epoch):
         for i, (data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes) in enumerate(train_loader):
-            print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
-            train_one_batch(train_model,optimizer,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
-            #assert 1==2
 
-    # Creating the Logger
-    # logger, output_path = create_logger(config.output_path, args.cfg, config.dataset.image_set)
+            #print(data.shape, valid_range.shape, im_info.shape,label.shape, bbox_target.shape, bbox_weight.shape, gt_boxes.shape)
+            train_one_batch(train_model,optimizer,meters,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
+
+        if epoch!=0 and epoch%2==0:
+            for param_group in optimizer.param_groups:
+                param_group['lr'] = param_group['lr']*0.1
+
+        save_name = os.path.join('/home/liuqiuyue/snipper_pytorch/output', 'faster_rcnn_{}.pth'.format(epoch))
+        save_checkpoint({
+            'epoch': epoch + 1,
+            'model': train_model.state_dict(),
+            'optimizer': optimizer.state_dict()
+        }, save_name)
+
+
 
 
 

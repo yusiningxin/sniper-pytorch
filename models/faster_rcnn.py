@@ -9,18 +9,22 @@ from roi_pooling.modules.roi_pool import _RoIPooling
 
 
 def _smooth_l1_loss(bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):
+    #print(bbox_pred.shape,sigma,dim,sigma ** 2)
     sigma_2 = sigma ** 2
     box_diff = bbox_pred - bbox_targets
     in_box_diff = bbox_inside_weights * box_diff
     abs_in_box_diff = torch.abs(in_box_diff)
     smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
-    in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign \
-                  + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
+    in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
+    #print(type(bbox_outside_weights),type(in_loss_box),bbox_outside_weights.shape,in_loss_box.shape)
+
     out_loss_box = bbox_outside_weights * in_loss_box
     loss_box = out_loss_box
     for i in sorted(dim, reverse=True):
         loss_box = loss_box.sum(i)
+        #print(i,loss_box.shape)
     loss_box = loss_box.mean()
+    #print(loss_box)
     return loss_box
 
 
@@ -218,14 +222,10 @@ class FasterRCNN(nn.Module):
         bbox_weight = bbox_weight.long()
 
         batch_size = data.size(0)
-
         conv_feat= self.conv_feat(data)
         relut = self.relut(conv_feat)
-
         relu1 = torch.cat([conv_feat,relut],1)
-
         conv_feat_new = self.relu_new(self.conv_new(relu1))
-
 
         rpn_mid = self.rpn_relu(self.rpn_conv(relu1))
 
@@ -238,42 +238,56 @@ class FasterRCNN(nn.Module):
 
         #print(rpn_cls_prob.shape, rpn_bbox_pred.shape,label.shape,bbox_target.shape,bbox_weight.shape)
         # proposal layer
-        rois = self.RPN_proposal((rpn_cls_prob.data, rpn_bbox_pred.data, im_info.data, valid_range.data))
-        #
-        # RCNN_loss_cls = 0
-        # RCNN_loss_bbox = 0
+        rois = self.RPN_proposal((rpn_cls_prob, rpn_bbox_pred, im_info, valid_range))
+
+        RCNN_loss_cls = 0
+        RCNN_loss_bbox = 0
         if is_train:
-            roi_data = self.RCNN_proposal_target(rois,gt_boxes.data,valid_range.data)
-        #     rois, rois_label, rois_target, rois_inside_ws, rois_outside_ws = roi_data
-        #
-        #     rois = Variable(rois.view(-1,5))
-        #     rois_label = Variable(rois_label.view(-1).long())
-        #     rois_target = Variable(rois_target.view(-1, rois_target.size(2)))
-        #     rois_inside_ws = Variable(rois_inside_ws.view(-1, rois_inside_ws.size(2)))
-        #     rois_outside_ws = Variable(rois_outside_ws.view(-1, rois_outside_ws.size(2)))
-        #
-        #
-        #     pooled_feat = self.RCNN_roi_pool(conv_feat_new, rois)
-        #     pooled_feat = pooled_feat.view(pooled_feat.size(0),-1)
-        #
-        #     out = self.fc1(pooled_feat)
-        #     out = self.fc2(out)
-        #     cls_score = self.cls_score(out)
-        #     bbox_pred = self.bbox_pred(out)
-        #     cls_prob = F.softmax(cls_score,1)
-        #
-        #     RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
-        #     RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
-        #
-        #     cls_prob = cls_prob.view(batch_size, rois.size(1), -1)
-        #     bbox_pred = bbox_pred.view(batch_size, rois.size(1), -1)
-        #     # print(rpn_cls_score.view(batch_size,self.num_anchors,-1).shape,label.shape,rpn_bbox_pred.shape,bbox_target.shape)
-        #     # rpn_loss_cls = F.cross_entropy(rpn_cls_score.view(batch_size,self.num_anchors,-1),label)
-        #     # rpn_loss_bbox = _smooth_l1_loss(rpn_bbox_pred, bbox_target, bbox_weight, bbox_weight)
+            roi_data = self.RCNN_proposal_target(rois,gt_boxes,valid_range)
+            rois, rois_label, rois_target, rois_inside_ws, rois_outside_ws = roi_data
+
+            rois = rois.view(-1,5)
+            rois_label = rois_label.view(-1).long()
+            rois_target = rois_target.view(-1, rois_target.size(2))
+            rois_inside_ws = rois_inside_ws.view(-1, rois_inside_ws.size(2))
+            rois_outside_ws = rois_outside_ws.view(-1, rois_outside_ws.size(2))
 
 
-        #return rois, cls_prob, bbox_pred, rpn_loss_cls, rpn_loss_bbox, RCNN_loss_cls, RCNN_loss_bbox, rois_label
-        return rois, cls_prob, bbox_pred, RCNN_loss_cls, RCNN_loss_bbox, rois_label
+            pooled_feat = self.RCNN_roi_pool(conv_feat_new, rois)
+            pooled_feat = pooled_feat.view(pooled_feat.size(0),-1)
+
+            out = self.fc1(pooled_feat)
+            out = self.fc2(out)
+            cls_score = self.cls_score(out)
+            bbox_pred = self.bbox_pred(out)
+            cls_prob = F.softmax(cls_score,1)
+
+            # RCNN loss
+            RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
+            RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
+
+
+            # RPN cls Loss
+            rpn_cls_score = rpn_cls_score_reshape.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 2)
+            rpn_label = label.view(batch_size, -1)
+
+            rpn_keep = rpn_label.view(-1).ne(-1).nonzero().view(-1)
+            rpn_cls_score = torch.index_select(rpn_cls_score.view(-1, 2), 0, rpn_keep)
+
+            rpn_label = torch.index_select(rpn_label.view(-1), 0, rpn_keep)
+            rpn_label = rpn_label.long()
+
+            rpn_cls_prob = F.softmax(rpn_cls_score,1)
+            rpn_loss_cls = F.cross_entropy(rpn_cls_score, rpn_label)
+
+            # RPN bbox loss
+            bbox_outside_weight = torch.ones(bbox_weight.shape).float().cuda()
+            bbox_outside_weight = bbox_outside_weight*batch_size*1.0/(len(rpn_keep))
+
+            rpn_loss_bbox = _smooth_l1_loss(rpn_bbox_pred, bbox_target.float(), bbox_weight.float(), Variable(bbox_outside_weight), sigma=3, dim=[1,2,3])
+
+
+        return rois, rpn_cls_prob,rpn_label,cls_prob, bbox_pred, rpn_loss_cls,rpn_loss_bbox,RCNN_loss_cls, RCNN_loss_bbox, rois_label
 
 
 

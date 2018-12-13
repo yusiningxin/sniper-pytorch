@@ -14,7 +14,7 @@ import numpy as np
 from data_utils.generate_anchor import generate_anchors
 from bbox.bbox_transform import bbox_transform_inv
 from bbox.bbox_transform import clip_boxes_batch
-from nms.nms import *
+from nms.nms_wrapper import *
 # from model.utils.config import cfg
 # from .generate_anchors import generate_anchors
 # from .bbox_transform import bbox_transform_inv, clip_boxes, clip_boxes_batch
@@ -132,9 +132,8 @@ class _ProposalLayer(nn.Module):
             # 7. take after_nms_topN (e.g. 300)
             # 8. return the top proposals (-> RoIs top)
 
-            keep_idx_i = gpu_nms(torch.cat((proposals_single, scores_single), 1).cpu().numpy(), self.nms_thresh)
-            #print('nms',len(keep_idx_i))
-            keep_idx_i = torch.from_numpy(np.array(keep_idx_i)).cuda()
+            keep_idx_i = nms(torch.cat((proposals_single, scores_single), 1), self.nms_thresh)
+
             keep_idx_i = keep_idx_i.long().view(-1)
 
             if self.post_nms_topN > 0:
@@ -153,13 +152,12 @@ class _ProposalLayer(nn.Module):
     def filter_proposal_by_range(self,scores, proposals, valid_range,batch_size):
         widths = proposals[:,:, 2] - proposals[:,:, 0]
         heights = proposals[:,:, 3] - proposals[:,:, 1]
-        area = (widths * heights).cpu().numpy()
+        area = (widths * heights).detach().cpu().numpy()
         for i in range(batch_size):
             min_area = valid_range[i][0]*valid_range[i][0]
             max_area = valid_range[i][1]*valid_range[i][1]
             idx = np.where((area[i] < min_area) | (area[i]>max_area))[0]
             scores[i][idx] = -1
-
 
 
     def _filter_boxes(self, boxes, min_size):
@@ -168,3 +166,4 @@ class _ProposalLayer(nn.Module):
         hs = boxes[:, :, 3] - boxes[:, :, 1] + 1
         keep = ((ws >= min_size.view(-1, 1).expand_as(ws)) & (hs >= min_size.view(-1, 1).expand_as(hs)))
         return keep
+
