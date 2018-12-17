@@ -138,7 +138,7 @@ class IMDB(object):
         if append_gt:
             print 'appending ground truth annotations'
             rpn_roidb = self.load_rpn_roidb(gt_roidb,proposal_path)
-            #rpn_roidb = rpn_roidb[:10]
+            #rpn_roidb = rpn_roidb[:10000]
             roidb = IMDB.merge_roidbs(gt_roidb, rpn_roidb)
         else:
             roidb = self.load_rpn_roidb(gt_roidb)

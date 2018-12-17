@@ -48,39 +48,22 @@ class PytorchIterator(data.Dataset):
         return len(self.inds)
 
     def __getitem__(self, item):
+
         num = item%self.batch_size
+
         if num == 0:
             self.get_chip_label_per_batch()
         if not self.cfg.TRAIN.ONLY_PROPOSAL:
-            return self.data_batch[0][num],self.data_batch[1][num],self.data_batch[2][num], \
-                   self.label_batch[0][num], self.label_batch[1][num], self.label_batch[2][num],self.label_batch[3][num]
+            return self.data_batch[0][num],self.data_batch[1][num],self.data_batch[2][num],self.label_batch[0][num], self.label_batch[1][num], self.label_batch[2][num],self.label_batch[3][num]
         else:
             return self.data_batch[0][num],self.label_batch[0][num], self.label_batch[1][num], self.label_batch[2][num]
-
-    # def get_all_data_and_label(self):
-    #     batch_num = len(self.inds)/self.batch_size
-    #     print('batch number:', batch_num)
-    #     for id in range(batch_num):
-    #         print(id)
-    #         self.get_chip_label_per_batch()
-    #         if id ==0 :
-    #             self.data = self.data_batch
-    #             self.label = self.label_batch
-    #         else:
-    #             assert len(self.data)==len(self.data_batch)
-    #             for item in range(len(self.data)):
-    #                 self.data[item] = np.vstack((self.data[item],self.data_batch[item]))
-    #             for item in range(len(self.label)):
-    #                 self.label[item] = np.vstack((self.label[item],self.label_batch[item]))
-    #
-    #     print(self.data[0].shape,self.label[0].shape)
 
 
 
     def get_chip_label_per_batch(self):
         cur_from = self.cur_i
         cur_to = self.cur_i + self.batch_size
-        #cur_to = min(cur_to,len(self.inds)) # just for test
+        self.cur_i = (self.cur_i + self.batch_size)%len(self.inds)
 
         roidb = [self.roidb[self.inds[i]] for i in range(cur_from, cur_to)]
         cropids = [self.roidb[self.inds[i]]['chip_order'][self.crop_idx[self.inds[i]] % len(self.roidb[self.inds[i]]['chip_order'])] for i in range(cur_from, cur_to)]
@@ -268,7 +251,7 @@ class PytorchIterator(data.Dataset):
                                      edgecolor='green', linewidth=3.5)
                 plt.gca().add_patch(rect)
             num = np.random.randint(100000)
-            plt.savefig('/home/liuqiuyue/debug_0/test_{}_pos.png'.format(imi))
+            plt.savefig('/home/liuqiuyue/debug_0/test_{}_pos.png'.format(num))
             plt.cla()
             plt.clf()
             plt.close()

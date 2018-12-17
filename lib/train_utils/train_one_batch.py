@@ -42,29 +42,29 @@ def pos_neg_recall(output, target):
 
 
 def train_one_batch(train_model,optimizer,meters,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch_index,batch_index):
+
     t0 = time.time()
-    data_var = data.cuda()
-    valid_range_var = valid_range.cuda()
-    im_info_var = im_info.cuda()
-    label_var = label.cuda()
-    bbox_target_var = bbox_target.cuda()
-    bbox_weight_var = bbox_weight.cuda()
-    gt_boxes_var = gt_boxes.cuda()
+    data_var = data.float().cuda()
+    valid_range_var = valid_range.float().cuda()
+    im_info_var = im_info.float().cuda()
+    label_var = label.float().cuda()
+    bbox_target_var = bbox_target.float().cuda()
+    bbox_weight_var = bbox_weight.float().cuda()
+    gt_boxes_var = gt_boxes.float().cuda()
 
     rois, rpn_cls_prob,rpn_label,cls_prob, bbox_pred, rpn_loss_cls, rpn_loss_box, RCNN_loss_cls, RCNN_loss_bbox, rois_label = train_model(data_var, im_info_var, valid_range_var, label_var, bbox_target_var, bbox_weight_var, gt_boxes_var)
 
     pos_recall, neg_recall, acc,pos_num,neg_num = pos_neg_recall(cls_prob, rois_label)
     rpn_pos_recall, rpn_neg_recall, rpn_acc, rpn_pos_num, rpn_neg_num = pos_neg_recall(rpn_cls_prob, rpn_label)
 
-
-
+    #print(rpn_loss_cls.mean(),rpn_loss_box.mean() ,RCNN_loss_cls.mean() ,RCNN_loss_bbox.mean())
     optimizer.zero_grad()
     loss = rpn_loss_cls.mean() + rpn_loss_box.mean() + RCNN_loss_cls.mean() + RCNN_loss_bbox.mean()
     loss.backward()
     optimizer.step()
     t1 = time.time()
 
-    meters['loss'].update(loss.data[0],1)
+    meters['loss'].update(loss.item(),1)
     meters['batch_time'].update(t1-t0,1)
     meters['rpn_cls_loss'].update(rpn_loss_cls.data.mean(),1)
     meters['rpn_box_loss'].update(rpn_loss_box.data.mean(), 1)

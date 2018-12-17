@@ -9,7 +9,7 @@ from roi_pooling.modules.roi_pool import _RoIPooling
 
 
 def _smooth_l1_loss(bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_weights, sigma=1.0, dim=[1]):
-    #print(bbox_pred.shape,sigma,dim,sigma ** 2)
+
     sigma_2 = sigma ** 2
     box_diff = bbox_pred - bbox_targets
     in_box_diff = bbox_inside_weights * box_diff
@@ -17,7 +17,6 @@ def _smooth_l1_loss(bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_w
     smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
     in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
     #print(type(bbox_outside_weights),type(in_loss_box),bbox_outside_weights.shape,in_loss_box.shape)
-
     out_loss_box = bbox_outside_weights * in_loss_box
     loss_box = out_loss_box
     for i in sorted(dim, reverse=True):
@@ -58,7 +57,8 @@ class residual_unit(nn.Module):
 
         self.relu3 = nn.ReLU(inplace=True)
         self.conv3 = nn.Conv2d(int(num_filter*0.25), num_filter, kernel_size=1, stride=1,padding=0, bias=False)
-        self.conv_short = nn.Conv2d(init_feature, num_filter, kernel_size=1, stride=stride,padding=0, bias=False)
+        if not dim_match:
+            self.conv_short = nn.Conv2d(init_feature, num_filter, kernel_size=1, stride=stride,padding=0, bias=False)
 
     def forward(self,data):
         out = self.relu1(self.bn1(data))
@@ -106,7 +106,8 @@ class residual_unit_dilate(nn.Module):
 
         self.relu3 = nn.ReLU(inplace=True)
         self.conv3 = nn.Conv2d(int(num_filter*0.25), num_filter, kernel_size=1, stride=1,padding=0, bias=False)
-        self.conv_short = nn.Conv2d(init_feature, num_filter, kernel_size=1, stride=stride,padding=0, bias=False)
+        if not dim_match:
+            self.conv_short = nn.Conv2d(init_feature, num_filter, kernel_size=1, stride=stride,padding=0, bias=False)
 
     def forward(self,data):
         out = self.relu1(self.bn1(data))
@@ -130,7 +131,7 @@ class resnetc4(nn.Module):
         super(resnetc4, self).__init__()
         num_stage = len(units)
 
-        self.bn1 = nn.BatchNorm2d(num_features=init_feature, affine=False, eps=2e-5)
+        self.bn1 = nn.BatchNorm2d(num_features=init_feature, affine=True, eps=2e-5)
         self.conv1 = nn.Conv2d(3, filter_list[0], kernel_size=7, stride=2, padding=3, bias=False)
 
         self.bn2 = nn.BatchNorm2d(num_features=filter_list[0], affine=True, eps=2e-5)
@@ -175,16 +176,16 @@ class resnetc5(nn.Module):
 
 
 class FasterRCNN(nn.Module):
-    def __init__(self,cfg,units = (3,4,23,4),filter_list = [64, 256, 512, 1024, 2048],fix_bn = False,momentum= 0.95,is_train = True):
+    def __init__(self,cfg,units = (3,4,23,3),filter_list = [64, 256, 512, 1024, 2048],fix_bn = False,momentum= 0.95,is_train=True):
         super(FasterRCNN, self).__init__()
-
+        self.is_train = is_train
         self.cfg = cfg
         self.num_anchors = cfg.network.NUM_ANCHORS
         # shared conv layers
         self.conv_feat = resnetc4(3,units,filter_list,fix_bn,momentum,fp16=cfg.TRAIN.fp16)
 
         # res5
-        self.relut = resnetc5(units = (3,4,23,4),filter_list = [64, 256, 512, 1024, 2048],num_stage=4,momentum=momentum,deform=False)
+        self.relut = resnetc5(units = (3,4,23,3),filter_list = [64, 256, 512, 1024, 2048],num_stage=4,momentum=momentum,deform=False)
 
         # conv
         self.conv_new = nn.Conv2d(filter_list[4]+filter_list[3], 256 , kernel_size=1, stride=1, padding=0, bias=False)
@@ -216,12 +217,10 @@ class FasterRCNN(nn.Module):
         self.bbox_pred = nn.Linear(1024, 4)
 
 
-    def forward(self, data,im_info,valid_range,label = None,bbox_target = None,bbox_weight = None,gt_boxes = None,is_train=True):
-        label =label.long()
-        bbox_target = bbox_target.long()
-        bbox_weight = bbox_weight.long()
+    def forward(self, data,im_info,valid_range,label = None,bbox_target = None,bbox_weight = None,gt_boxes = None):
 
         batch_size = data.size(0)
+
         conv_feat= self.conv_feat(data)
         relut = self.relut(conv_feat)
         relu1 = torch.cat([conv_feat,relut],1)
@@ -242,7 +241,7 @@ class FasterRCNN(nn.Module):
 
         RCNN_loss_cls = 0
         RCNN_loss_bbox = 0
-        if is_train:
+        if self.is_train:
             roi_data = self.RCNN_proposal_target(rois,gt_boxes,valid_range)
             rois, rois_label, rois_target, rois_inside_ws, rois_outside_ws = roi_data
 
@@ -272,6 +271,7 @@ class FasterRCNN(nn.Module):
             rpn_label = label.view(batch_size, -1)
 
             rpn_keep = rpn_label.view(-1).ne(-1).nonzero().view(-1)
+
             rpn_cls_score = torch.index_select(rpn_cls_score.view(-1, 2), 0, rpn_keep)
 
             rpn_label = torch.index_select(rpn_label.view(-1), 0, rpn_keep)
@@ -286,8 +286,27 @@ class FasterRCNN(nn.Module):
 
             rpn_loss_bbox = _smooth_l1_loss(rpn_bbox_pred, bbox_target.float(), bbox_weight.float(), Variable(bbox_outside_weight), sigma=3, dim=[1,2,3])
 
+            return rois, rpn_cls_prob,rpn_label,cls_prob, bbox_pred, rpn_loss_cls,rpn_loss_bbox,RCNN_loss_cls, RCNN_loss_bbox, rois_label
+        else:
 
-        return rois, rpn_cls_prob,rpn_label,cls_prob, bbox_pred, rpn_loss_cls,rpn_loss_bbox,RCNN_loss_cls, RCNN_loss_bbox, rois_label
+            rois = rois.view(-1, 5)
+
+            pooled_feat = self.RCNN_roi_pool(conv_feat_new, rois)
+            pooled_feat = pooled_feat.view(pooled_feat.size(0), -1)
+
+            out = self.fc1(pooled_feat)
+            out = self.fc2(out)
+            cls_score = self.cls_score(out)
+            bbox_pred = self.bbox_pred(out)
+            cls_prob = F.softmax(cls_score, 1)
+
+            # RPN cls Loss
+            rpn_cls_score = rpn_cls_score_reshape.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 2)
+            rpn_cls_score = torch.index_select(rpn_cls_score.view(-1, 2), 0, rpn_keep)
+            rpn_cls_prob = F.softmax(rpn_cls_score, 1)
+
+            return rois, rpn_cls_prob, cls_prob, bbox_pred
+
 
 
 
