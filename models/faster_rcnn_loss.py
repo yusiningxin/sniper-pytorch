@@ -17,13 +17,19 @@ def _smooth_l1_loss(bbox_pred, bbox_targets, bbox_inside_weights, bbox_outside_w
     smoothL1_sign = (abs_in_box_diff < 1. / sigma_2).detach().float()
     in_loss_box = torch.pow(in_box_diff, 2) * (sigma_2 / 2.) * smoothL1_sign + (abs_in_box_diff - (0.5 / sigma_2)) * (1. - smoothL1_sign)
     #print(type(bbox_outside_weights),type(in_loss_box),bbox_outside_weights.shape,in_loss_box.shape)
+
     out_loss_box = bbox_outside_weights * in_loss_box
+
     loss_box = out_loss_box
+    print(loss_box.shape,loss_box[loss_box!=0])
     for i in sorted(dim, reverse=True):
         loss_box = loss_box.sum(i)
+        #print(i,loss_box.shape)
+    print(loss_box.shape)
     loss_box = loss_box.mean()
-
+    print(loss_box)
     return loss_box
+
 
 class residual_unit(nn.Module):
     def __init__(self,init_feature, num_filter, stride, dim_match, momentum, fix_bn):
@@ -264,8 +270,12 @@ class FasterRCNN(nn.Module):
 
             # RCNN loss
             RCNN_loss_cls = F.cross_entropy(cls_score, rois_label)
+
+            # rois_outside_ws = torch.ones(rois_inside_ws.shape).float().cuda()
+            # rois_outside_ws = rois_outside_ws * batch_size * 1.0 / (len(rpn_keep))
+
             RCNN_loss_bbox = _smooth_l1_loss(bbox_pred, rois_target, rois_inside_ws, rois_outside_ws)
-            RCNN_loss_bbox = RCNN_loss_bbox/10
+
 
             # RPN cls Loss
             rpn_cls_score = rpn_cls_score_reshape.permute(0, 2, 3, 1).contiguous().view(batch_size, -1, 2)

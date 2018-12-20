@@ -12,11 +12,11 @@ import os
 import time
 import cPickle
 from data_utils.data_workers import nms_worker
-# from data_utils.visualization import visualize_dets
-# from tqdm import tqdm
-# import math
-# from multiprocessing import Pool
-# from multiprocessing.pool import ThreadPool
+from data_utils.visualization import visualize_dets
+from tqdm import tqdm
+import math
+from multiprocessing import Pool
+from multiprocessing.pool import ThreadPool
 # from iterators.MNIteratorTest import MNIteratorTest
 # import mxnet as mx
 
@@ -63,7 +63,9 @@ class Tester(object):
                 for i in zip(*self.module.get_outputs(merge_multi_context=False))]
 
     def get_proposals(self, batch, scales):
+
         data = dict(zip(self.data_names, batch.data))
+
         outputs = self.forward(batch)
         scores, rois = [], []
         im_shapes = np.array([im.shape[-2:] for im in data['data']]).reshape(-1, self.batch_size, 2)
@@ -86,37 +88,31 @@ class Tester(object):
         return scores, rois, data, im_ids
 
     def detect(self, batch, scales):
-        data = dict(zip(self.data_names, batch.data))
-        outputs = self.forward(batch)
-        scores, preds = [], []
-        im_shapes = np.array([im.shape[-2:] for im in data['data']]).reshape(-1, self.batch_size, 2)
-        im_ids = np.array([], dtype=int)
+        #with torch.no_grad:
+        rois,cls_prob, bboxes,im_id= self.module(batch[0],batch[1],im_ids = batch[2])
 
-        for i, (gpu_out, gpu_scales, gpu_shapes) in enumerate(zip(outputs, scales, im_shapes)):
-            gpu_rois = gpu_out[self.rpn_output_names['rois']].asnumpy()
-            # Reshape crois
-            nper_gpu = gpu_rois.shape[0] / self.batch_size
-            gpu_scores = gpu_out[self.rcnn_output_names['cls']].asnumpy()
-            gpu_deltas = gpu_out[self.rcnn_output_names['bbox']].asnumpy()
-            im_ids = np.hstack((im_ids, gpu_out[self.rcnn_output_names['im_ids']].asnumpy().astype(int)))
-            for idx in range(self.batch_size):
-                cids = np.where(gpu_rois[:, 0] == idx)[0]
-                assert len(cids) == nper_gpu, 'The number of rois per GPU should be fixed!'
-                crois = gpu_rois[cids, 1:]
-                cscores = gpu_scores[idx]
-                cdeltas = gpu_deltas[idx]
+        cls_prob = cls_prob.detach().cpu().numpy()
+        cls_prob = cls_prob.reshape(self.batch_size,300,-1)
 
-                # Apply deltas and clip predictions
-                cboxes = bbox_pred(crois, cdeltas)
-                cboxes = clip_boxes(cboxes, gpu_shapes[idx])
+        bboxes = bboxes.detach().cpu().numpy()
+        bboxes = bboxes.reshape(self.batch_size, 300, -1)
 
-                # Re-scale boxes
-                cboxes = cboxes / gpu_scales[idx]
+        rois = rois.detach().cpu().numpy()
+        rois = rois.reshape(self.batch_size, 300, -1)
 
-                # Store predictions
-                scores.append(cscores)
-                preds.append(cboxes)
-        return scores, preds, data, im_ids
+        scales = scales.reshape(self.batch_size,-1)
+
+        #print(cls_prob.shape,bboxes.shape,im_id.shape,batch[0].shape,scales.shape)
+
+        for i,(rois,bbox,im_shape,scale) in enumerate(zip(rois,bboxes,batch[0],scales)):
+            #print(score.shape,bbox.shape,im_shape.shape,scale.shape,rois.shape,scale)
+
+            bboxes[i] = bbox_pred(rois[:,1:], bbox)
+            bboxes[i] = clip_boxes(bboxes[i], im_shape[0].shape)
+            bboxes[i] = bboxes[i] / scale
+
+        return cls_prob,bboxes,batch,im_id
+
 
     def set_scale(self, scale):
         if isinstance(self.test_iter, PrefetchingIter):
@@ -129,8 +125,7 @@ class Tester(object):
         print(print_str)
         if self.logger: self.logger.info(print_str)
 
-    def aggregate(self, scale_cls_dets, vis=False, cache_name='cache', vis_path=None, vis_name=None,
-                  pre_nms_db_divide=10, vis_ext='.png'):
+    def aggregate(self, scale_cls_dets, vis=True, cache_name='cache', vis_path='/home/liuqiuyue/vis/', vis_name=None,pre_nms_db_divide=10, vis_ext='.png'):
         n_scales = len(scale_cls_dets)
         assert n_scales == len(self.cfg.TEST.VALID_RANGES), 'A valid range should be specified for each test scale'
         all_boxes = [[[] for _ in range(self.num_images)] for _ in range(self.num_classes)]
@@ -204,7 +199,7 @@ class Tester(object):
                 cPickle.dump(all_boxes, detfile)
         return all_boxes
 
-    def get_detections(self, cls_thresh=1e-3, cache_name='cache', evaluate=False):
+    def get_detections(self, cls_thresh=1e-3, cache_name='cache', evaluate=False,vis = False):
         all_boxes = [[[] for _ in range(self.num_images)] for _ in range(self.num_classes)]
         data_counter = 0
         detect_time, post_time = 0, 0
@@ -216,7 +211,6 @@ class Tester(object):
             stime = time.time()
             scores, boxes, data, im_ids = self.detect(batch, scales)
             detect_time += time.time() - stime
-
             stime = time.time()
             for i, (cscores, cboxes, im_id) in enumerate(zip(scores, boxes, im_ids)):
                 parallel_nms_args = []
@@ -256,8 +250,7 @@ class Tester(object):
                                    [[]] + [all_boxes[j][im_id] for j in range(1, self.num_classes)], im_info[i, 2],
                                    self.cfg.network.PIXEL_MEANS, self.class_names, threshold=0.5,
                                    save_path=os.path.join(visualization_path, '{}{}'.format(im_id, vis_ext)))
-
-            data_counter += self.test_iter.get_batch_size()
+            data_counter += self.batch_size
             post_time += time.time() - stime
             if self.verbose:
                 self.show_info('Tester: {}/{}, Detection: {:.4f}s, Post Processing: {:.4}s'.format(
@@ -275,37 +268,37 @@ class Tester(object):
         detect_time, post_time = 0, 0
         if vis and not os.path.isdir(self.cfg.TEST.VISUALIZATION_PATH):
             os.makedirs(self.cfg.TEST.VISUALIZATION_PATH)
+        with torch.no_grad():
+            for batch in self.test_iter:
+                im_info = batch.data[1].asnumpy()
+                scales = im_info[:, 2].reshape(-1, self.batch_size)
+                # Run detection on the batch
+                stime = time.time()
+                scores, boxes, data, im_ids = self.get_proposals(batch, scales)
+                detect_time += time.time() - stime
 
-        for batch in self.test_iter:
-            im_info = batch.data[1].asnumpy()
-            scales = im_info[:, 2].reshape(-1, self.batch_size)
-            # Run detection on the batch
-            stime = time.time()
-            scores, boxes, data, im_ids = self.get_proposals(batch, scales)
-            detect_time += time.time() - stime
-
-            stime = time.time()
-            for i, (cscores, cboxes, im_id) in enumerate(zip(scores, boxes, im_ids)):
-                # Keep the requested number of rois
-                rem_scores = cscores[0:n_proposals, np.newaxis]
-                rem_boxes = cboxes[0:n_proposals, 0:4]
-                cls_dets = np.hstack((rem_boxes, rem_scores)).astype(np.float32)
-                if vis:
-                    visualization_path = os.path.join(self.cfg.TEST.VISUALIZATION_PATH, cache_name)
-                    if not os.path.isdir(visualization_path):
-                        os.makedirs(visualization_path)
-                    visualize_dets(batch.data[0][i].asnumpy(),
-                                   [[]] + [cls_dets], im_info[i, 2],
-                                   self.cfg.network.PIXEL_MEANS, ['__background__', 'object'], threshold=0.5,
-                                   save_path=os.path.join(visualization_path, '{}{}'.format(im_id, vis_ext)))
-                all_boxes[im_id] = cls_dets
-            data_counter += self.test_iter.get_batch_size()
-            post_time += time.time() - stime
-            self.show_info(
-                'Tester: {}/{}, Forward: {:.4f}s, Post Processing: {:.4}s'.format(min(data_counter, self.num_images),
-                                                                                  self.num_images,
-                                                                                  detect_time / data_counter,
-                                                                                  post_time / data_counter))
+                stime = time.time()
+                for i, (cscores, cboxes, im_id) in enumerate(zip(scores, boxes, im_ids)):
+                    # Keep the requested number of rois
+                    rem_scores = cscores[0:n_proposals, np.newaxis]
+                    rem_boxes = cboxes[0:n_proposals, 0:4]
+                    cls_dets = np.hstack((rem_boxes, rem_scores)).astype(np.float32)
+                    if vis:
+                        visualization_path = os.path.join(self.cfg.TEST.VISUALIZATION_PATH, cache_name)
+                        if not os.path.isdir(visualization_path):
+                            os.makedirs(visualization_path)
+                        visualize_dets(batch.data[0][i].asnumpy(),
+                                       [[]] + [cls_dets], im_info[i, 2],
+                                       self.cfg.network.PIXEL_MEANS, ['__background__', 'object'], threshold=0.5,
+                                       save_path=os.path.join(visualization_path, '{}{}'.format(im_id, vis_ext)))
+                    all_boxes[im_id] = cls_dets
+                data_counter += self.test_iter.get_batch_size()
+                post_time += time.time() - stime
+                self.show_info(
+                    'Tester: {}/{}, Forward: {:.4f}s, Post Processing: {:.4}s'.format(min(data_counter, self.num_images),
+                                                                                      self.num_images,
+                                                                                      detect_time / data_counter,
+                                                                                      post_time / data_counter))
         return all_boxes
 
 
@@ -323,7 +316,7 @@ def detect_scale_worker(arguments):
     return tester.get_detections(evaluate=False, cache_name='dets_scale_{}x{}'.format(scale[0], scale[1]))
 
 
-def imdb_detection_wrapper(model, config, imdb, roidb):
+def imdb_detection_wrapper(model, config, imdb, roidb,vis = False):
 
     detections = []
     if config.TEST.CONCURRENT_JOBS == 1:
@@ -361,7 +354,7 @@ def imdb_detection_wrapper(model, config, imdb, roidb):
         # pool.close()
 
     tester = Tester(None, imdb, roidb, None, cfg=config, batch_size=nbatch)
-    all_boxes = tester.aggregate(detections, vis=vis, cache_name='dets_final')
+    all_boxes = tester.aggregate(detections, vis=True, cache_name='dets_final')
 
     print('Evaluating detections...')
     imdb.evaluate_detections(all_boxes)

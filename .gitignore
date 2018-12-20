@@ -24,3 +24,5 @@ data/*
 weight/*
 .vscode/.ropeproject/objectdb
 .vscode/.ropeproject/config.py
+*.out
+output/*

@@ -2,7 +2,7 @@ import init
 import os
 import sys
 import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = '7'
+os.environ["CUDA_VISIBLE_DEVICES"] = '6,7'
 #os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import matplotlib
 matplotlib.use('Agg')
@@ -53,8 +53,8 @@ def main():
                                       proposal=config.dataset.proposal, only_gt=True, flip=False,
                                       result_path=config.output_path,
                                       proposal_path=config.proposal_path, get_imdb=True)
-
-    check_point = torch.load('output/faster_rcnn_0_100.pth')
+    roidb = roidb[:100]
+    check_point = torch.load('output/faster_rcnn_10rcnnloss_0_11000.pth')
 
     model = FasterRCNN(config, is_train=False)
 
@@ -67,7 +67,7 @@ def main():
             name = k
         new_state_dict[name] = v
     model.load_state_dict(new_state_dict)
-    model = torch.nn.DataParallel(model).cuda().train()
+    model = torch.nn.DataParallel(model).cuda().eval()
 
     if config.TEST.EXTRACT_PROPOSALS:
         imdb_proposal_extraction_wrapper(sym_inst, config, imdb, roidb, context, arg_params, aux_params, args.vis)

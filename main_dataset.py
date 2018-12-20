@@ -104,11 +104,20 @@ if __name__ == '__main__':
     train_model = FasterRCNN(config,is_train=True)
 
     #_initialize_weights(train_model)
-    train_model_dic = train_model.state_dict()
-    check_point = torch.load('output/faster_rcnn_pre_trained.pth')
-    train_model_dic.update(check_point['model'])
+    # train_model_dic = train_model.state_dict()
+    # check_point = torch.load('output/faster_rcnn_pre_trained.pth')
+    # train_model_dic.update(check_point['model'])
 
-    train_model.load_state_dict(train_model_dic)
+    check_point = torch.load('output/faster_rcnn_10rcnnloss_0_11000.pth')
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in check_point['model'].items():
+        if k[0:6] == 'module':
+            name = k[7:]  # remove `module.`
+        else:
+            name = k
+        new_state_dict[name] = v
+    train_model.load_state_dict(new_state_dict)
 
     # for param in train_model.conv_feat.bn1.parameters():
     #     param.requires_grad = False
@@ -123,8 +132,8 @@ if __name__ == '__main__':
     #train_params = filter(lambda p: p.requires_grad, train_model.parameters())
 
     train_model = torch.nn.DataParallel(train_model).cuda().train()
-    optimizer = torch.optim.SGD(train_model.parameters(), 0.015, momentum=0.9, weight_decay=0.0001)
-    #optimizer = torch.optim.Adam(train_model.parameters(), 0.015)
+    optimizer = torch.optim.SGD(train_model.parameters(), 0.0015, momentum=0.9, weight_decay=0.0001)
+    #optimizer = torch.optim.Adam(train_model.parameters(), 0.0015)
 
     meter_names = ['batch_time',  'loss','rpn_cls_loss','rpn_box_loss','rcnn_cls_loss','rcnn_box_loss','acc','pos_recall','neg_recall','neg_num','pos_num','rpn_acc','rpn_pos_recall','rpn_neg_recall','rpn_neg_num','rpn_pos_num']
     meters = {name: AverageMeter() for name in meter_names}
@@ -134,19 +143,19 @@ if __name__ == '__main__':
             train_one_batch(train_model,optimizer,meters,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch,i)
 
             if i % 1000 == 0:
-                save_name = os.path.join('/home/liuqiuyue/snipper_pytorch/output','faster_rcnn_{}_{}.pth'.format(epoch, i))
+                save_name = os.path.join('/home/liuqiuyue/snipper_pytorch/output','faster_rcnn_1219_{}_{}.pth'.format(epoch, i))
                 save_checkpoint({
                     'epoch': epoch + 1,
                     'model': train_model.state_dict(),
                     'optimizer': optimizer.state_dict()
                 }, save_name)
 
-        if epoch!=0 and epoch%2==0:
-            for param_group in optimizer.param_groups:
-                param_group['lr'] = param_group['lr']*0.1
+
+        for param_group in optimizer.param_groups:
+            param_group['lr'] = param_group['lr']*0.1
 
 
-        save_name = os.path.join('/home/liuqiuyue/snipper_pytorch/output', 'faster_rcnn_{}.pth'.format(epoch))
+        save_name = os.path.join('/home/liuqiuyue/snipper_pytorch/output', 'faster_rcnn_1219_{}.pth'.format(epoch))
         save_checkpoint({
             'epoch': epoch + 1,
             'model': train_model.state_dict(),

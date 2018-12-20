@@ -89,13 +89,13 @@ TRAIN:
   end_epoch: 7
 
   # whether flip image
-  FLIP: False
+  FLIP: True
   # whether shuffle image
   SHUFFLE: true
   # whether use OHEM
   ENABLE_OHEM: true
   # Number of images per GPU
-  BATCH_IMAGES: 78
+  BATCH_IMAGES: 72
   # e2e changes behavior of anchor loader and metric
   END2END: true
   # R-CNN

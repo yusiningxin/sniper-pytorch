@@ -102,9 +102,11 @@ class _ProposalLayer(nn.Module):
         proposals = bbox_transform_inv(anchors, bbox_deltas, batch_size)
 
         # 2. clip predicted boxes to image
+
         proposals = clip_boxes_batch(proposals, im_info[:,:2], batch_size)
 
-        self.filter_proposal_by_range(scores,proposals,valid_range,batch_size)
+        if valid_range is not None:
+            self.filter_proposal_by_range(scores,proposals,valid_range,batch_size)
 
         scores_keep = scores
         proposals_keep = proposals
