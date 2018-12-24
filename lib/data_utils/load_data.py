@@ -27,7 +27,7 @@ def load_proposal_roidb(dataset_name, image_set_name, root_path, dataset_path, r
     imdb = eval(dataset_name)(image_set_name, root_path, dataset_path, result_path,load_mask=load_mask)
 
     roidb = imdb.gt_roidb()
-    #roidb = roidb[:10000]
+    #roidb = roidb[:1000]
     if not only_gt:
         roidb = eval('imdb.' + proposal + '_roidb')(roidb, append_gt,proposal_path=proposal_path)
     else:

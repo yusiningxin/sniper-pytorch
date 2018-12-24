@@ -54,7 +54,7 @@ class PytorchIterator(data.Dataset):
         if num == 0:
             self.get_chip_label_per_batch()
         if not self.cfg.TRAIN.ONLY_PROPOSAL:
-            return self.data_batch[0][num],self.data_batch[1][num],self.data_batch[2][num],self.label_batch[0][num], self.label_batch[1][num], self.label_batch[2][num],self.label_batch[3][num]
+            return self.data_batch[0][num],self.data_batch[1][num],self.data_batch[2][num],self.label_batch[0][num]
         else:
             return self.data_batch[0][num],self.label_batch[0][num], self.label_batch[1][num], self.label_batch[2][num]
 
@@ -141,14 +141,14 @@ class PytorchIterator(data.Dataset):
             encoded_masks = -np.ones((n_batch,100,500))
 
         for i in range(len(all_labels)):
-            labels[i] = all_labels[i][0][0]
-            pids = all_labels[i][2]
-            if len(pids[0]) > 0:
-                bbox_targets[i][pids[0], pids[1], pids[2]] = all_labels[i][1]
-                bbox_weights[i][pids[0], pids[1], pids[2]] = 1.0
+            # labels[i] = all_labels[i][0][0]
+            # pids = all_labels[i][2]
+            # if len(pids[0]) > 0:
+            #     bbox_targets[i][pids[0], pids[1], pids[2]] = all_labels[i][1]
+            #     bbox_weights[i][pids[0], pids[1], pids[2]] = 1.0
             gt_boxes[i] = all_labels[i][3]
-            if self.cfg.TRAIN.WITH_MASK:
-                encoded_masks[i] = all_labels[i][4]
+            # if self.cfg.TRAIN.WITH_MASK:
+            #     encoded_masks[i] = all_labels[i][4]
 
         im_tensor = np.zeros((n_batch, 3, self.crop_size[0], self.crop_size[1]), dtype=np.float32)
         processed_list = processed_list.get()
@@ -159,7 +159,7 @@ class PytorchIterator(data.Dataset):
             [im_tensor, srange, chipinfo]
 
         self.label_batch = [labels, bbox_targets, bbox_weights] if self.cfg.TRAIN.ONLY_PROPOSAL else \
-            [labels, bbox_targets, bbox_weights, gt_boxes]
+            [gt_boxes]
 
         if self.cfg.TRAIN.WITH_MASK:
             self.label_batch.append(np.array(encoded_masks))

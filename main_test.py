@@ -2,7 +2,7 @@ import init
 import os
 import sys
 import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = '6,7'
+os.environ["CUDA_VISIBLE_DEVICES"] = '1'
 #os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import matplotlib
 matplotlib.use('Agg')
@@ -11,14 +11,14 @@ import torch.nn as nn
 from configs.faster.default_configs import config, update_config, update_config_from_list
 from iterators.PytorchIterator import PytorchIterator
 from data_utils.load_data import load_proposal_roidb, merge_roidb, filter_roidb
-from bbox.bbox_regression import add_bbox_regression_targets
 from iterators.PytorchIterator import PytorchIterator
-from models.faster_rcnn import FasterRCNN
-from train_utils.train_one_batch import train_one_batch
+from model.faster_rcnn.resnet import resnet
+
 import argparse
 from inference import imdb_detection_wrapper
 import logging
 import math
+
 import logging.config
 
 
@@ -53,26 +53,37 @@ def main():
                                       proposal=config.dataset.proposal, only_gt=True, flip=False,
                                       result_path=config.output_path,
                                       proposal_path=config.proposal_path, get_imdb=True)
-    roidb = roidb[:100]
-    check_point = torch.load('output/faster_rcnn_10rcnnloss_0_11000.pth')
+    roidb = roidb[:10]
+    #check_point = torch.load('output/faster_rcnn_1220_0_19000.pth')
 
-    model = FasterRCNN(config, is_train=False)
+    #load_name = 'output/new1_0_1000.pth'
+    load_name = 'output/faster_rcnn_jwyang.pth'
+
+    # faster-rcnn
+    fasterRCNN = resnet(config.dataset.NUM_CLASSES, 101, pretrained=True, class_agnostic=config.CLASS_AGNOSTIC)
+    # init weight
+    fasterRCNN.create_architecture()
+    print("load checkpoint %s" % (load_name))
+    checkpoint = torch.load(load_name)
 
     from collections import OrderedDict
     new_state_dict = OrderedDict()
-    for k, v in check_point['model'].items():
+    for k, v in checkpoint['model'].items():
         if k[0:6] == 'module':
             name = k[7:]  # remove `module.`
         else:
             name = k
         new_state_dict[name] = v
-    model.load_state_dict(new_state_dict)
-    model = torch.nn.DataParallel(model).cuda().eval()
 
+    fasterRCNN.load_state_dict(new_state_dict)
+
+    fasterRCNN.cuda()
+    fasterRCNN = nn.DataParallel(fasterRCNN)
+    fasterRCNN.eval()
     if config.TEST.EXTRACT_PROPOSALS:
         imdb_proposal_extraction_wrapper(sym_inst, config, imdb, roidb, context, arg_params, aux_params, args.vis)
     else:
-        imdb_detection_wrapper(model, config, imdb, roidb)
+        imdb_detection_wrapper(fasterRCNN, config, imdb, roidb)
 
 if __name__ == '__main__':
     main()

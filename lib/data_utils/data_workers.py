@@ -77,7 +77,6 @@ class im_worker(object):
             im = cv2.resize(im, None, None, fx=scale, fy=scale, interpolation=cv2.INTER_LINEAR)
         except:
             print 'Image Resize Failed!'
-
         rim = np.zeros((3, max_size[0], max_size[1]), dtype=np.float32)
         d1m = min(im.shape[0], max_size[0])
         d2m = min(im.shape[1], max_size[1])
@@ -85,10 +84,7 @@ class im_worker(object):
         for j in range(3):
             rim[j, :d1m, :d2m] = im[:d1m, :d2m, 2 - j] - pixel_means[2 - j]
 
-        # if self.crop_size:
-        #     return mx.nd.array(rim, dtype='float32')
-        # else:
-        #     return mx.nd.array(rim, dtype='float32'), scale, (im.shape[0],im.shape[1])
+
         if self.crop_size:
             return rim
         else:
@@ -199,6 +195,14 @@ class anchor_worker(object):
                 classes = classes[ids]
 
         agt_boxes = gt_boxes.copy()
+        fgt_boxes = -np.ones((100, 5))
+        if len(agt_boxes) > 0:
+            fgt_boxes[:min(len(agt_boxes), 100), :] = np.hstack((agt_boxes, classes))
+
+        rval = [None, None, None, fgt_boxes]
+        return rval
+
+
         ids = filter_boxes(vgt_boxes, 10)
         if len(ids) > 0:
             vgt_boxes = vgt_boxes[ids]

@@ -42,6 +42,24 @@ def pos_neg_recall(output, target):
 
 
 def train_one_batch(train_model,optimizer,meters,data, valid_range, im_info,label, bbox_target, bbox_weight, gt_boxes,epoch_index,batch_index):
+    train_model.train()
+    loss_temp = 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     t0 = time.time()
     data_var = data.float().cuda()

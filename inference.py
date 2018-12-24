@@ -4,19 +4,23 @@
 # Written by Mahyar Najibi
 # -----------------------------------------------------------------
 import numpy as np
-from bbox.bbox_transform import bbox_pred, clip_boxes
+#from bbox.bbox_transform import bbox_pred, clip_boxes
 from iterators.PytorchTest import PytorchTest
 import torch
-# from iterators.PrefetchingIter import PrefetchingIter
+from configs.faster.default_configs import config as config_
 import os
 import time
 import cPickle
+from model.rpn.bbox_transform import bbox_transform_inv
+from model.rpn.bbox_transform import clip_boxes
 from data_utils.data_workers import nms_worker
 from data_utils.visualization import visualize_dets
 from tqdm import tqdm
 import math
 from multiprocessing import Pool
 from multiprocessing.pool import ThreadPool
+from model.nms.nms_wrapper import nms
+
 # from iterators.MNIteratorTest import MNIteratorTest
 # import mxnet as mx
 
@@ -88,30 +92,30 @@ class Tester(object):
         return scores, rois, data, im_ids
 
     def detect(self, batch, scales):
-        #with torch.no_grad:
-        rois,cls_prob, bboxes,im_id= self.module(batch[0],batch[1],im_ids = batch[2])
+        with torch.no_grad():
+            rois, rpn_cls_prob, rpn_label, cls_prob, bbox_pred, rpn_loss_cls, rpn_loss_bbox, RCNN_loss_cls, RCNN_loss_bbox, rois_label= self.module(batch[0],batch[1])
+        im_id = batch[2]
+        boxes = rois.data[:, :, 1:5]
+        box_deltas = bbox_pred.data
+
+        box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor([0.1,0.1,0.2,0.2]).cuda()
+        box_deltas = box_deltas.view(1,-1, 4*81)
+        boxes = boxes.view(1,-1,4)
+
+        pred_boxes = bbox_transform_inv(boxes, box_deltas, 1)
+        pred_boxes = clip_boxes(pred_boxes, batch[1].data, 1)
 
         cls_prob = cls_prob.detach().cpu().numpy()
-        cls_prob = cls_prob.reshape(self.batch_size,300,-1)
+        cls_prob = cls_prob.reshape(self.batch_size,cls_prob.shape[0]/self.batch_size,-1)
 
-        bboxes = bboxes.detach().cpu().numpy()
-        bboxes = bboxes.reshape(self.batch_size, 300, -1)
-
-        rois = rois.detach().cpu().numpy()
-        rois = rois.reshape(self.batch_size, 300, -1)
+        pred_boxes= pred_boxes.detach().cpu().numpy()
+        pred_boxes = pred_boxes.reshape(self.batch_size, pred_boxes.shape[1]/self.batch_size, -1)
 
         scales = scales.reshape(self.batch_size,-1)
 
-        #print(cls_prob.shape,bboxes.shape,im_id.shape,batch[0].shape,scales.shape)
-
-        for i,(rois,bbox,im_shape,scale) in enumerate(zip(rois,bboxes,batch[0],scales)):
-            #print(score.shape,bbox.shape,im_shape.shape,scale.shape,rois.shape,scale)
-
-            bboxes[i] = bbox_pred(rois[:,1:], bbox)
-            bboxes[i] = clip_boxes(bboxes[i], im_shape[0].shape)
-            bboxes[i] = bboxes[i] / scale
-
-        return cls_prob,bboxes,batch,im_id
+        for i,(bbox,scale) in enumerate(zip(pred_boxes,scales)):
+            pred_boxes[i] = pred_boxes[i] / scale.float()
+        return cls_prob,pred_boxes,batch,im_id
 
 
     def set_scale(self, scale):
@@ -152,8 +156,9 @@ class Tester(object):
                     uvalid_ids = np.where(areas <= valid_range[1] * valid_range[1])[0] if valid_range[1] > 0 else \
                         np.arange(len(areas))
                     valid_ids = np.intersect1d(lvalid_ids, uvalid_ids)
-                    cls_dets = cls_dets[valid_ids, :] if len(valid_ids) > 0 else cls_dets
+                    #cls_dets = cls_dets[valid_ids, :] if len(valid_ids) > 0 else cls_dets
                     agg_dets = np.vstack((agg_dets, cls_dets))
+
                 parallel_nms_args[int(i / n_roi_per_pool)].append(agg_dets)
 
         # Divide roidb and perform NMS in parallel to reduce the memory usage
@@ -218,7 +223,8 @@ class Tester(object):
                     # Apply the score threshold
                     inds = np.where(cscores[:, j] > cls_thresh)[0]
                     rem_scores = cscores[inds, j, np.newaxis]
-                    rem_boxes = cboxes[inds, 0:4]
+                    rem_boxes = cboxes[inds, j * 4:(j+1) * 4]
+                    #rem_boxes = cboxes[inds, 0:4]
                     cls_dets = np.hstack((rem_boxes, rem_scores))
                     if evaluate or vis:
                         parallel_nms_args.append(cls_dets)
@@ -319,39 +325,9 @@ def detect_scale_worker(arguments):
 def imdb_detection_wrapper(model, config, imdb, roidb,vis = False):
 
     detections = []
-    if config.TEST.CONCURRENT_JOBS == 1:
-        for nbatch, scale in zip(config.TEST.BATCH_IMAGES, config.TEST.SCALES):
-            detections.append(detect_scale_worker([scale, nbatch, config, model, roidb, imdb]))
-    else:
-        pass
-        # im_per_job = int(math.ceil(float(len(roidb)) / config.TEST.CONCURRENT_JOBS))
-        # roidbs = []
-        # pool = Pool(config.TEST.CONCURRENT_JOBS)
-        # for i in range(config.TEST.CONCURRENT_JOBS):
-        #     roidbs.append([roidb[j] for j in range(im_per_job * i, min(im_per_job * (i + 1), len(roidb)))])
-        #
-        # for _, (nbatch, scale) in enumerate(zip(config.TEST.BATCH_IMAGES, config.TEST.SCALES)):
-        #     parallel_args = []
-        #     for j in range(config.TEST.CONCURRENT_JOBS):
-        #         parallel_args.append([scale, nbatch, context, config, sym_def, \
-        #                               roidbs[j], imdb, arg_params, aux_params, vis])
-        #
-        #     detection_list = pool.map(detect_scale_worker, parallel_args)
-        #     tmp_dets = detection_list[0]
-        #     for i in range(1, len(detection_list)):
-        #         for j in range(imdb.num_classes):
-        #             tmp_dets[j] += detection_list[i][j]
-        #
-        #     # Cache detections...
-        #     cache_path = os.path.join(imdb.result_path, 'dets_scale_{}x{}'.format(scale[0], scale[1]))
-        #     if not os.path.isdir(cache_path):
-        #         os.makedirs(cache_path)
-        #     cache_path = os.path.join(cache_path, 'detections.pkl')
-        #     print('Done! Saving detections into: {}'.format(cache_path))
-        #     with open(cache_path, 'wb') as detfile:
-        #         cPickle.dump(tmp_dets, detfile)
-        #     detections.append(tmp_dets)
-        # pool.close()
+
+    for nbatch, scale in zip(config.TEST.BATCH_IMAGES, config.TEST.SCALES):
+        detections.append(detect_scale_worker([scale, nbatch, config, model, roidb, imdb]))
 
     tester = Tester(None, imdb, roidb, None, cfg=config, batch_size=nbatch)
     all_boxes = tester.aggregate(detections, vis=True, cache_name='dets_final')
