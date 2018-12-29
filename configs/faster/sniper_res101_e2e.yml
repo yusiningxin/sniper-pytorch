@@ -95,7 +95,7 @@ TRAIN:
   # whether use OHEM
   ENABLE_OHEM: true
   # Number of images per GPU
-  BATCH_IMAGES: 12
+  BATCH_IMAGES: 14
   # e2e changes behavior of anchor loader and metric
   END2END: true
   # R-CNN
@@ -162,9 +162,9 @@ TEST:
 
   # Number of images per gpu for each scale
   BATCH_IMAGES:
+  - 1
+  - 1
   - 2
-  - 2
-  - 4
 
   # Number of concurrent jobs used for inference
   # if greater than 1, the roidb is distributed over

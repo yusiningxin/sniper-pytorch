@@ -3,8 +3,8 @@ import init
 import os
 import sys
 import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = '0,1,2,3'
-nGPUs = 4
+os.environ["CUDA_VISIBLE_DEVICES"] = '1,2,3'
+nGPUs = 3
 import matplotlib
 matplotlib.use('Agg')
 import torch.nn as nn
@@ -122,7 +122,7 @@ if __name__ == '__main__':
     # init weight
     fasterRCNN.create_architecture()
 
-    lr = cfg.TRAIN.LEARNING_RATE
+    lr = 0.001
 
     params = []
     for key, value in dict(fasterRCNN.named_parameters()).items():
@@ -146,7 +146,7 @@ if __name__ == '__main__':
         else:
             name = k
         if k == 'RCNN_bbox_pred.bias' or k == 'RCNN_bbox_pred.weight':
-            continue
+           continue
         new_state_dict[name] = v
     origin_state_dict.update(new_state_dict)
     fasterRCNN.load_state_dict(origin_state_dict)
@@ -213,18 +213,18 @@ if __name__ == '__main__':
 
 
             if i!=0 and i % 1000 == 0:
-                save_name = os.path.join('output','new1_{}_{}.pth'.format(epoch, i))
+                save_name = os.path.join('output','nofix_{}_{}.pth'.format(epoch, i))
                 save_checkpoint({
                     'epoch': epoch + 1,
                     'model': fasterRCNN.state_dict(),
                     'optimizer': optimizer.state_dict()
                 }, save_name)
 
-        if epoch % 2 == 0:
-            adjust_learning_rate(optimizer, 0.1)
-            lr *= 0.1
+        #if epoch % 1 == 0:
+        adjust_learning_rate(optimizer, 0.1)
+        lr *= 0.1
 
-        save_name = os.path.join('output', 'new1_{}.pth'.format(epoch))
+        save_name = os.path.join('output', 'nofix_{}.pth'.format(epoch))
         save_checkpoint({
             'epoch': epoch + 1,
             'model': fasterRCNN.state_dict(),

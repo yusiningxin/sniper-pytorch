@@ -2,7 +2,7 @@ import init
 import os
 import sys
 import torch
-os.environ["CUDA_VISIBLE_DEVICES"] = '1'
+os.environ["CUDA_VISIBLE_DEVICES"] = '0'
 #os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 import matplotlib
 matplotlib.use('Agg')
@@ -53,11 +53,11 @@ def main():
                                       proposal=config.dataset.proposal, only_gt=True, flip=False,
                                       result_path=config.output_path,
                                       proposal_path=config.proposal_path, get_imdb=True)
-    roidb = roidb[:10]
+    #roidb = roidb[:100]
     #check_point = torch.load('output/faster_rcnn_1220_0_19000.pth')
 
-    #load_name = 'output/new1_0_1000.pth'
-    load_name = 'output/faster_rcnn_jwyang.pth'
+    load_name = 'output/new3_0_23000.pth'
+    #load_name = 'output/faster_rcnn_jwyang.pth'
 
     # faster-rcnn
     fasterRCNN = resnet(config.dataset.NUM_CLASSES, 101, pretrained=True, class_agnostic=config.CLASS_AGNOSTIC)

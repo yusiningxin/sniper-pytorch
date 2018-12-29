@@ -99,7 +99,8 @@ class Tester(object):
         box_deltas = bbox_pred.data
 
         box_deltas = box_deltas.view(-1, 4) * torch.FloatTensor([0.1,0.1,0.2,0.2]).cuda()
-        box_deltas = box_deltas.view(1,-1, 4*81)
+        #box_deltas = box_deltas.view(1,-1, 4*81)
+        box_deltas = box_deltas.view(1, -1, 4)
         boxes = boxes.view(1,-1,4)
 
         pred_boxes = bbox_transform_inv(boxes, box_deltas, 1)
@@ -156,7 +157,7 @@ class Tester(object):
                     uvalid_ids = np.where(areas <= valid_range[1] * valid_range[1])[0] if valid_range[1] > 0 else \
                         np.arange(len(areas))
                     valid_ids = np.intersect1d(lvalid_ids, uvalid_ids)
-                    #cls_dets = cls_dets[valid_ids, :] if len(valid_ids) > 0 else cls_dets
+                    cls_dets = cls_dets[valid_ids, :] if len(valid_ids) > 0 else cls_dets
                     agg_dets = np.vstack((agg_dets, cls_dets))
 
                 parallel_nms_args[int(i / n_roi_per_pool)].append(agg_dets)
@@ -204,7 +205,82 @@ class Tester(object):
                 cPickle.dump(all_boxes, detfile)
         return all_boxes
 
+    # def aggregate(self, scale_cls_dets, vis=True, cache_name='cache', vis_path='/home/liuqiuyue/vis/', vis_name=None,
+    #               pre_nms_db_divide=10, vis_ext='.png'):
+    #     n_scales = len(scale_cls_dets)
+    #     assert n_scales == len(self.cfg.TEST.VALID_RANGES), 'A valid range should be specified for each test scale'
+    #     all_boxes = [[[] for _ in range(self.num_images)] for _ in range(self.num_classes)]
+    #     nms_pool = Pool(32)
+    #     if len(scale_cls_dets) > 1:
+    #         self.show_info('Aggregating detections from multiple scales and applying NMS...')
+    #     else:
+    #         self.show_info('Performing NMS on detections...')
+    #
+    #     # Apply ranges and store detections per category
+    #     parallel_nms_args = [[] for _ in range(pre_nms_db_divide)]
+    #     n_roi_per_pool = math.ceil(self.num_images / float(pre_nms_db_divide))
+    #     empty_array = np.transpose(np.array([[], [], [], [], []]), (1, 0))
+    #     for i in range(self.num_images):
+    #         for j in range(1, self.num_classes):
+    #             agg_dets = np.empty((0, 5), dtype=np.float32)
+    #             for all_cls_dets, valid_range in zip(scale_cls_dets, self.cfg.TEST.VALID_RANGES):
+    #                 cls_dets = all_cls_dets[j][i]
+    #                 heights = cls_dets[:, 2] - cls_dets[:, 0]
+    #                 widths = cls_dets[:, 3] - cls_dets[:, 1]
+    #                 areas = widths * heights
+    #                 lvalid_ids = np.where(areas > valid_range[0] * valid_range[0])[0] if valid_range[0] > 0 else \
+    #                     np.arange(len(areas))
+    #                 uvalid_ids = np.where(areas <= valid_range[1] * valid_range[1])[0] if valid_range[1] > 0 else \
+    #                     np.arange(len(areas))
+    #                 valid_ids = np.intersect1d(lvalid_ids, uvalid_ids)
+    #                 cls_dets = cls_dets[valid_ids, :] if len(valid_ids) > 0 else cls_dets
+    #                 agg_dets = np.vstack((agg_dets, cls_dets))
+    #             scores_tmp = agg_dets[:, 4]
+    #             order = scores_tmp.argsort()[::-1]
+    #             agg_dets = agg_dets[order]
+    #             agg_dets = torch.from_numpy(agg_dets).cuda()
+    #             keep = nms(agg_dets, 0.45)
+    #             if type(keep).__name__ == 'list':
+    #                 all_boxes[j][i] = empty_array
+    #             else:
+    #                 agg_dets = agg_dets[keep.view(-1).long()]
+    #                 all_boxes[j][i] = agg_dets.cpu().numpy()
+    #
+    #     # Limit number of detections to MAX_PER_IMAGE if requested and visualize if vis is True
+    #     for i in range(self.num_images):
+    #         if self.cfg.TEST.MAX_PER_IMAGE > 0:
+    #             image_scores = np.hstack([all_boxes[j][i][:, -1] for j in range(1, self.num_classes)])
+    #             if len(image_scores) > self.cfg.TEST.MAX_PER_IMAGE:
+    #                 image_thresh = np.sort(image_scores)[-self.cfg.TEST.MAX_PER_IMAGE]
+    #                 for j in range(1, self.num_classes):
+    #                     keep = np.where(all_boxes[j][i][:, -1] >= image_thresh)[0]
+    #                     all_boxes[j][i] = all_boxes[j][i][keep, :]
+    #         if vis:
+    #             visualization_path = vis_path if vis_path else os.path.join(self.cfg.TEST.VISUALIZATION_PATH,
+    #                                                                         cache_name)
+    #             if not os.path.isdir(visualization_path):
+    #                 os.makedirs(visualization_path)
+    #             import cv2
+    #             im = cv2.cvtColor(cv2.imread(self.roidb[i]['image']), cv2.COLOR_BGR2RGB)
+    #             visualize_dets(im,
+    #                            [[]] + [all_boxes[j][i] for j in range(1, self.num_classes)],
+    #                            1.0,
+    #                            self.cfg.network.PIXEL_MEANS, self.class_names, threshold=0.5,
+    #                            save_path=os.path.join(visualization_path, '{}{}'.format(vis_name if vis_name else i,
+    #                                                                                     vis_ext)), transform=False)
+    #
+    #     if cache_name:
+    #         cache_path = os.path.join(self.result_path, cache_name)
+    #         if not os.path.isdir(cache_path):
+    #             os.makedirs(cache_path)
+    #         cache_path = os.path.join(cache_path, 'detections.pkl')
+    #         self.show_info('Done! Saving detections into: {}'.format(cache_path))
+    #         with open(cache_path, 'wb') as detfile:
+    #             cPickle.dump(all_boxes, detfile)
+    #     return all_boxes
+
     def get_detections(self, cls_thresh=1e-3, cache_name='cache', evaluate=False,vis = False):
+
         all_boxes = [[[] for _ in range(self.num_images)] for _ in range(self.num_classes)]
         data_counter = 0
         detect_time, post_time = 0, 0
@@ -215,6 +291,7 @@ class Tester(object):
             # Run detection on the batch
             stime = time.time()
             scores, boxes, data, im_ids = self.detect(batch, scales)
+
             detect_time += time.time() - stime
             stime = time.time()
             for i, (cscores, cboxes, im_id) in enumerate(zip(scores, boxes, im_ids)):
@@ -223,8 +300,8 @@ class Tester(object):
                     # Apply the score threshold
                     inds = np.where(cscores[:, j] > cls_thresh)[0]
                     rem_scores = cscores[inds, j, np.newaxis]
-                    rem_boxes = cboxes[inds, j * 4:(j+1) * 4]
-                    #rem_boxes = cboxes[inds, 0:4]
+                    #rem_boxes = cboxes[inds, j * 4:(j+1) * 4]
+                    rem_boxes = cboxes[inds, 0:4]
                     cls_dets = np.hstack((rem_boxes, rem_scores))
                     if evaluate or vis:
                         parallel_nms_args.append(cls_dets)
@@ -237,6 +314,7 @@ class Tester(object):
                         self.thread_pool = ThreadPool(8)
 
                     final_dets = self.thread_pool.map(self.nms_worker.worker, parallel_nms_args)
+
                     for j in range(1, self.num_classes):
                         all_boxes[j][im_id] = final_dets[j - 1]
 
@@ -250,12 +328,13 @@ class Tester(object):
                             keep = np.where(all_boxes[j][im_id][:, -1] >= image_thresh)[0]
                             all_boxes[j][im_id] = all_boxes[j][im_id][keep, :]
                 if vis:
+                    visualization_path = '/home/liuqiuyue/vis1/'
                     if not os.path.isdir(visualization_path):
                         os.makedirs(visualization_path)
-                    visualize_dets(batch.data[0][i].asnumpy(),
+                    visualize_dets(batch[0][i].cpu().numpy(),
                                    [[]] + [all_boxes[j][im_id] for j in range(1, self.num_classes)], im_info[i, 2],
                                    self.cfg.network.PIXEL_MEANS, self.class_names, threshold=0.5,
-                                   save_path=os.path.join(visualization_path, '{}{}'.format(im_id, vis_ext)))
+                                   save_path=os.path.join(visualization_path, '{}{}'.format(im_id, '.png')))
             data_counter += self.batch_size
             post_time += time.time() - stime
             if self.verbose:
@@ -314,9 +393,7 @@ def detect_scale_worker(arguments):
 
 
     pytorch_dataset = PytorchTest(roidb=roidb, config=config, batch_size=nbatch, threads=32,pad_rois_to=400, crop_size=None, test_scale=scale)
-
     train_loader = torch.utils.data.DataLoader(dataset=pytorch_dataset, batch_size=nbatch, shuffle=False,num_workers=0)
-
     # Create Tester
     tester = Tester(model, imdb, roidb, train_loader, cfg=config, batch_size=nbatch)
     return tester.get_detections(evaluate=False, cache_name='dets_scale_{}x{}'.format(scale[0], scale[1]))
@@ -330,7 +407,7 @@ def imdb_detection_wrapper(model, config, imdb, roidb,vis = False):
         detections.append(detect_scale_worker([scale, nbatch, config, model, roidb, imdb]))
 
     tester = Tester(None, imdb, roidb, None, cfg=config, batch_size=nbatch)
-    all_boxes = tester.aggregate(detections, vis=True, cache_name='dets_final')
+    all_boxes = tester.aggregate(detections, vis=False, cache_name='dets_final')
 
     print('Evaluating detections...')
     imdb.evaluate_detections(all_boxes)
