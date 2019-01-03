@@ -56,7 +56,7 @@ def main():
     #roidb = roidb[:100]
     #check_point = torch.load('output/faster_rcnn_1220_0_19000.pth')
 
-    load_name = 'output/new3_0_23000.pth'
+    load_name = 'output/nofix_3_15000.pth'
     #load_name = 'output/faster_rcnn_jwyang.pth'
 
     # faster-rcnn
